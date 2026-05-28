@@ -1,0 +1,11 @@
+.env
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
+logs/
+data/
+4gdata-python.zip
+.DS_Store
+server.out.log
+server.err.log
