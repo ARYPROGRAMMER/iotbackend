@@ -70,6 +70,7 @@ def list_commands():
 def run_device_command(command_key):
     command = DEVICE_COMMANDS.get(command_key)
     if not command:
+        current_app.logger.warning("unknown iwown command key=%s", command_key)
         return jsonify({"ReturnCode": 10404, "message": "unknown command", "available": sorted(DEVICE_COMMANDS)}), 404
 
     method = command["method"]
@@ -89,6 +90,7 @@ def run_device_command(command_key):
 def run_calculation(calculation_key):
     command = CALCULATION_COMMANDS.get(calculation_key)
     if not command:
+        current_app.logger.warning("unknown iwown calculation key=%s", calculation_key)
         return jsonify({"ReturnCode": 10404, "message": "unknown calculation", "available": sorted(CALCULATION_COMMANDS)}), 404
 
     body = calculation_body(request.get_json(silent=True) or {})
@@ -131,4 +133,12 @@ def log_command(command_key, command, body, result):
             "response_body": response,
             "error": None if result.get("ok") else response.get("message") or response.get("raw"),
         },
+    )
+    current_app.logger.info(
+        "iwown command logged key=%s method=%s path=%s status=%s return_code=%s",
+        command_key,
+        command["method"],
+        command["path"],
+        result.get("status_code"),
+        response.get("ReturnCode") or response.get("returnCode"),
     )

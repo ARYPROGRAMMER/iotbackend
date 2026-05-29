@@ -9,3 +9,4 @@ data/
 .DS_Store
 server.out.log
 server.err.log
+venv/

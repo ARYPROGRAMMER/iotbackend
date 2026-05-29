@@ -1,5 +1,3 @@
-# Stealthera 4G Wearable Backend
-
 Flask backend for IWOWN 4G watch data ingestion, Supabase storage, outbound device commands, calculation proxies, logging, and a simple operations dashboard.
 
 ## Local Setup
@@ -20,6 +18,13 @@ Health check:
 
 ```text
 http://localhost:8098/healthz
+```
+
+OpenAPI / Swagger:
+
+```text
+http://localhost:8098/openapi.json
+http://localhost:8098/docs
 ```
 
 ## Environment
@@ -47,6 +52,8 @@ https://api.stealthera.com/4g/deviceinfo/upload
 https://api.stealthera.com/4g/status/notify
 https://api.stealthera.com/4g/health/sleep
 ```
+
+GitHub Actions keeps the deployment warm every 5 minutes by pinging the Koyeb health check at `/healthz`.
 
 ## Watch Upload Routes
 

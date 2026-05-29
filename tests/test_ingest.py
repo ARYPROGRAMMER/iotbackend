@@ -62,6 +62,19 @@ class IngestTests(unittest.TestCase):
         self.assertEqual(data["ReturnCode"], 0)
         self.assertEqual(data["Data"]["score"], 80)
 
+    def test_missing_route_is_logged_and_returns_json(self):
+        with self.assertLogs(self.app.logger.name, level="INFO") as logs:
+            response = self.client.get("/does-not-exist")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()["ReturnCode"], 10404)
+        self.assertTrue(any("request not found" in entry for entry in logs.output))
+
+    def test_openapi_document_is_exposed(self):
+        response = self.client.get("/openapi.json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["openapi"], "3.1.0")
+
 
 if __name__ == "__main__":
     unittest.main()

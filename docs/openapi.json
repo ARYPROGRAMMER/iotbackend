@@ -1,0 +1,303 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Stealthera IWOWN 4G Watch Backend",
+    "version": "1.0.0",
+    "description": "Flask backend compatible with the IWOWN 4G watch upload and command contract. The device can call either the prefixed paths shown here or the same paths without the /4g prefix."
+  },
+  "servers": [
+    {
+      "url": "https://vicious-dianna-arya007-e2dd5336.koyeb.app/4g",
+      "description": "Production deployment"
+    },
+    {
+      "url": "http://localhost:8098/4g",
+      "description": "Local development"
+    }
+  ],
+  "tags": [
+    { "name": "ingest", "description": "Watch uploads and status callbacks" },
+    { "name": "commands", "description": "Command proxy endpoints for the IWOWN platform" },
+    { "name": "calculation", "description": "Algorithm proxy endpoints for the IWOWN platform" },
+    { "name": "ops", "description": "Health and operational endpoints" }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "tags": ["ops"],
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Application health",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
+          }
+        }
+      }
+    },
+    "/pb/upload": {
+      "post": {
+        "tags": ["ingest"],
+        "summary": "Upload binary health packets",
+        "description": "Accepts the IWOWN binary payload format. The watch typically sends application/x-www-form-urlencoded content-type with raw binary bytes. Return byte 0x00 on success, 0x02 for short payload, 0x03 for invalid packet header.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": { "schema": { "type": "string", "format": "binary" } },
+            "application/x-www-form-urlencoded": { "schema": { "type": "string", "format": "binary" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Single-byte IWOWN reply",
+            "content": { "text/plain": { "schema": { "type": "string", "format": "binary", "example": "\u0000" } } }
+          }
+        }
+      }
+    },
+    "/alarm/upload": { "$ref": "#/components/pathItems/BinaryUpload" },
+    "/call_log/upload": { "$ref": "#/components/pathItems/CallLogUpload" },
+    "/deviceinfo/upload": { "$ref": "#/components/pathItems/DeviceInfoUpload" },
+    "/status/notify": { "$ref": "#/components/pathItems/StatusNotify" },
+    "/health/sleep": { "$ref": "#/components/pathItems/SleepResult" },
+    "/api/iwown/commands": {
+      "get": {
+        "tags": ["commands"],
+        "summary": "List available device commands and calculations",
+        "responses": {
+          "200": {
+            "description": "Command catalog",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandCatalog" } } }
+          }
+        }
+      }
+    },
+    "/api/iwown/commands/{command_key}": {
+      "parameters": [
+        { "name": "command_key", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "tags": ["commands"],
+        "summary": "Proxy a device status query or command fetch",
+        "responses": {
+          "200": { "description": "Upstream response" },
+          "404": { "description": "Unknown command" }
+        }
+      },
+      "post": {
+        "tags": ["commands"],
+        "summary": "Proxy a device command to IWOWN",
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } }
+        },
+        "responses": {
+          "200": { "description": "Upstream response" },
+          "404": { "description": "Unknown command" }
+        }
+      }
+    },
+    "/api/iwown/calculations/{calculation_key}": {
+      "post": {
+        "tags": ["calculation"],
+        "summary": "Proxy a calculation request to IWOWN",
+        "parameters": [
+          { "name": "calculation_key", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } }
+        },
+        "responses": {
+          "200": { "description": "Upstream response" },
+          "404": { "description": "Unknown calculation" }
+        }
+      }
+    }
+  },
+  "components": {
+    "pathItems": {
+      "BinaryUpload": {
+        "post": {
+          "tags": ["ingest"],
+          "summary": "Upload binary alarm packets",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/octet-stream": { "schema": { "type": "string", "format": "binary" } },
+              "application/x-www-form-urlencoded": { "schema": { "type": "string", "format": "binary" } }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Single-byte IWOWN reply",
+              "content": { "text/plain": { "schema": { "type": "string", "format": "binary" } } }
+            }
+          }
+        }
+      },
+      "CallLogUpload": {
+        "post": {
+          "tags": ["ingest"],
+          "summary": "Upload call logs and SOS events",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/CallLogPayload" } }
+            }
+          },
+          "responses": {
+            "200": { "description": "IWOWN JSON response", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IwownReply" } } } }
+          }
+        }
+      },
+      "DeviceInfoUpload": {
+        "post": {
+          "tags": ["ingest"],
+          "summary": "Upload device information",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/DeviceInfoPayload" } }
+            }
+          },
+          "responses": {
+            "200": { "description": "IWOWN JSON response", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IwownReply" } } } }
+          }
+        }
+      },
+      "StatusNotify": {
+        "post": {
+          "tags": ["ingest"],
+          "summary": "Receive device online/offline notifications",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StatusNotifyPayload" } }
+            }
+          },
+          "responses": {
+            "200": { "description": "IWOWN JSON response", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IwownReply" } } } }
+          }
+        }
+      },
+      "SleepResult": {
+        "get": {
+          "tags": ["ingest"],
+          "summary": "Return calculated sleep data for the watch",
+          "parameters": [
+            { "name": "deviceid", "in": "query", "schema": { "type": "string" } },
+            { "name": "device_id", "in": "query", "schema": { "type": "string" } },
+            { "name": "sleep_date", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } }
+          ],
+          "responses": {
+            "200": { "description": "IWOWN JSON response", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SleepReply" } } } }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "ok" },
+          "storage": { "type": "string", "example": "supabase" },
+          "service": { "type": "string", "example": "stealthera-api" }
+        },
+        "required": ["status", "storage", "service"]
+      },
+      "IwownReply": {
+        "type": "object",
+        "properties": {
+          "ReturnCode": { "type": "integer", "example": 0 },
+          "Data": { "type": "object", "additionalProperties": true }
+        },
+        "required": ["ReturnCode"]
+      },
+      "CallLogPayload": {
+        "type": "object",
+        "properties": {
+          "deviceid": { "type": "string" },
+          "device_id": { "type": "string" },
+          "normal_call_logs": { "type": "array", "items": { "$ref": "#/components/schemas/CallLogEntry" } },
+          "sos": { "type": "array", "items": { "$ref": "#/components/schemas/SosEntry" } }
+        },
+        "additionalProperties": true
+      },
+      "CallLogEntry": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer" },
+          "call_number": { "type": "string" },
+          "start_time": { "type": "string" },
+          "end_time": { "type": "string" }
+        },
+        "additionalProperties": true
+      },
+      "SosEntry": {
+        "type": "object",
+        "properties": {
+          "alarm_time": { "type": "string" },
+          "lat": { "type": ["string", "number"] },
+          "lon": { "type": ["string", "number"] },
+          "call_logs": { "type": "array", "items": { "$ref": "#/components/schemas/CallLogEntry" } }
+        },
+        "additionalProperties": true
+      },
+      "DeviceInfoPayload": {
+        "type": "object",
+        "properties": {
+          "deviceid": { "type": "string" },
+          "device_id": { "type": "string" },
+          "model": { "type": "string" },
+          "version": { "type": "string" }
+        },
+        "additionalProperties": true
+      },
+      "StatusNotifyPayload": {
+        "type": "object",
+        "properties": {
+          "DeviceId": { "type": "string" },
+          "deviceid": { "type": "string" },
+          "device_id": { "type": "string" },
+          "EventTime": { "type": "string" },
+          "Status": { "type": "string" },
+          "status": { "type": "string" }
+        },
+        "additionalProperties": true
+      },
+      "SleepReply": {
+        "type": "object",
+        "properties": {
+          "ReturnCode": { "type": "integer", "example": 0 },
+          "Data": {
+            "type": "object",
+            "properties": {
+              "deviceid": { "type": "string" },
+              "sleep_date": { "type": "string", "format": "date" },
+              "start_time": { "type": "string" },
+              "end_time": { "type": "string" },
+              "deep_sleep": { "type": "integer" },
+              "light_sleep": { "type": "integer" },
+              "weak_sleep": { "type": "integer" },
+              "eyemove_sleep": { "type": "integer" },
+              "score": { "type": "integer" },
+              "osahs_risk": { "type": "integer" },
+              "spo2_score": { "type": "integer" },
+              "sleep_hr": { "type": "integer" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "required": ["ReturnCode", "Data"]
+      },
+      "CommandCatalog": {
+        "type": "object",
+        "properties": {
+          "device_commands": { "type": "object", "additionalProperties": true },
+          "calculations": { "type": "object", "additionalProperties": true }
+        },
+        "required": ["device_commands", "calculations"]
+      }
+    }
+  }
+}
