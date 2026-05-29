@@ -91,33 +91,50 @@ def handle_binary_upload(upload_type):
     )
 
     current_app.logger.info("iwown %s upload accepted device=%s packets=%s", upload_type, upload.device_id, len(upload.packets))
-    queue_binary_fanout(upload_type, upload_id, upload)
+    queue_binary_fanout(upload_type, upload_id, upload, source_ip)
     return ok_byte()
 
 
-def queue_binary_fanout(upload_type, upload_id, upload):
+def queue_binary_fanout(upload_type, upload_id, upload, source_ip):
     app = current_app._get_current_object()
 
     def worker():
         with app.app_context():
-            process_binary_upload(upload_type, upload_id, upload)
+            process_binary_upload(upload_type, upload_id, upload, source_ip)
 
     executor = getattr(app, "ingest_executor", None)
     if executor is None:
-        process_binary_upload(upload_type, upload_id, upload)
+        process_binary_upload(upload_type, upload_id, upload, source_ip)
         return
 
     try:
         executor.submit(worker)
     except Exception:
         app.logger.exception("failed to queue iwown binary upload fanout; processing inline")
-        process_binary_upload(upload_type, upload_id, upload)
+        process_binary_upload(upload_type, upload_id, upload, source_ip)
 
 
-def process_binary_upload(upload_type, upload_id, upload):
+def process_binary_upload(upload_type, upload_id, upload, source_ip):
     try:
         for packet in upload.packets:
             decoded = parse_packet(packet)
+            
+            # Enhanced real-time logging replacing MongoDB interface
+            log_doc = {
+                "device_id": upload.device_id,
+                "timestamp": utc_now(),
+                "raw_hex": packet.payload.hex(),
+                "decoded": {
+                    "opt": decoded.get("protocol_name"),
+                    "size": packet.length,
+                    "source": "real_watch" if upload.device_id != "unknown" else "unknown",
+                    "created_at": utc_now()
+                }
+            }
+            if decoded.get("decoded"):
+                log_doc["decoded"]["data"] = decoded["decoded"]
+            current_app.logger.info(f"REALTIME_LOG: {json.dumps(log_doc)}")
+
             packet_id = current_app.store.insert(
                 "packets",
                 {
@@ -291,6 +308,37 @@ def status_notify(prefix=None):
     )
     current_app.logger.info("status notify accepted device=%s status=%s", device_id, status)
     return json_reply(0)
+
+
+@ingest_bp.get("/api/live")
+def get_live():
+    # Returns the latest decoded health/packet information
+    latest = current_app.store.recent("packets", 1)
+    if not latest:
+        return jsonify({"status": "error", "message": "No data available"})
+    
+    pkt = latest[0]
+    payload_json = pkt.get("payload_json", {})
+    protocol_name = pkt.get("protocol_name", "unknown")
+    
+    # Extract some nested value like heart rate if possible
+    health_data = {}
+    if isinstance(payload_json, dict):
+        if "heart_rate_min" in payload_json:
+            health_data["heart_rate_min"] = payload_json.get("heart_rate_min")
+        elif protocol_name == "health":
+            health_data = payload_json
+        else:
+            health_data = payload_json  # dump it directly
+            
+    response_data = {
+        "status": "ok",
+        "device_id": pkt.get("device_id"),
+        "timestamp": pkt.get("received_at") or utc_now(),
+        "health": health_data,
+        "packet_type": protocol_name
+    }
+    return jsonify(response_data)
 
 
 @ingest_bp.get("/health/sleep")

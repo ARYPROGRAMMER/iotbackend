@@ -4,7 +4,6 @@ from flask import Flask, jsonify
 
 from stealthera_api.config import Config
 from stealthera_api.docs_api import docs_bp
-from stealthera_api.dashboard.routes import dashboard_bp
 from stealthera_api.iwown.commands import commands_bp
 from stealthera_api.iwown.ingest import ingest_bp
 from stealthera_api.logging_config import configure_logging
@@ -20,7 +19,6 @@ def create_app(config_class=Config):
     register_request_logging(app)
     app.ingest_executor = ThreadPoolExecutor(max_workers=4)
     app.store = create_store(app.config, app.logger)
-    app.register_blueprint(dashboard_bp)
     app.register_blueprint(ingest_bp)
     app.register_blueprint(commands_bp)
     app.register_blueprint(docs_bp)
