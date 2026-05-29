@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 from flask import Flask, jsonify
 
 from stealthera_api.config import Config
@@ -16,6 +18,7 @@ def create_app(config_class=Config):
     config_class.load_runtime_env(app)
     configure_logging(app)
     register_request_logging(app)
+    app.ingest_executor = ThreadPoolExecutor(max_workers=4)
     app.store = create_store(app.config, app.logger)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(ingest_bp)

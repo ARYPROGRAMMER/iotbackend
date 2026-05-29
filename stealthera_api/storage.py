@@ -2,6 +2,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
 
 
 TABLES = [
@@ -124,6 +125,7 @@ class FileStore:
         self.logger = logger
         self.root = Path(config["DATA_DIR"])
         self.root.mkdir(parents=True, exist_ok=True)
+        self._lock = Lock()
         for table in TABLES:
             (self.root / f"{table}.jsonl").touch(exist_ok=True)
 
@@ -131,8 +133,9 @@ class FileStore:
         data = dict(record)
         data.setdefault("id", str(uuid.uuid4()))
         data.setdefault("received_at", utc_now())
-        with (self.root / f"{table}.jsonl").open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(data, ensure_ascii=False, default=str) + "\n")
+        with self._lock:
+            with (self.root / f"{table}.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(data, ensure_ascii=False, default=str) + "\n")
         return data["id"]
 
     def upsert_device(self, device_id, values):

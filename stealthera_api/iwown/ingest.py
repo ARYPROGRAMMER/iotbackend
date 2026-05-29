@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 
 from flask import Blueprint, Response, current_app, jsonify, request
@@ -89,39 +90,64 @@ def handle_binary_upload(upload_type):
         },
     )
 
-    for packet in upload.packets:
-        decoded = parse_packet(packet)
-        packet_id = current_app.store.insert(
-            "packets",
-            {
-                "upload_id": upload_id,
-                "device_id": upload.device_id,
-                "protocol_code": packet.protocol_code,
-                "protocol_name": decoded["protocol_name"],
-                "packet_length": packet.length,
-                "crc": packet.crc,
-                "payload_hex": packet.payload.hex(),
-                "payload_json": decoded["decoded"],
-            },
-        )
-        for metric in decoded["measurements"]:
-            row = dict(metric)
-            row["device_id"] = upload.device_id
-            row["source_packet_id"] = packet_id
-            current_app.store.insert("health_measurements", row)
-        for point in decoded["locations"]:
-            row = dict(point)
-            row["device_id"] = upload.device_id
-            row["source_packet_id"] = packet_id
-            current_app.store.insert("location_points", row)
-        for alarm in decoded["alarms"]:
-            row = dict(alarm)
-            row["device_id"] = upload.device_id
-            row["source_packet_id"] = packet_id
-            current_app.store.insert("alarms", row)
-
     current_app.logger.info("iwown %s upload accepted device=%s packets=%s", upload_type, upload.device_id, len(upload.packets))
+    queue_binary_fanout(upload_type, upload_id, upload)
     return ok_byte()
+
+
+def queue_binary_fanout(upload_type, upload_id, upload):
+    app = current_app._get_current_object()
+
+    def worker():
+        with app.app_context():
+            process_binary_upload(upload_type, upload_id, upload)
+
+    executor = getattr(app, "ingest_executor", None)
+    if executor is None:
+        process_binary_upload(upload_type, upload_id, upload)
+        return
+
+    try:
+        executor.submit(worker)
+    except Exception:
+        app.logger.exception("failed to queue iwown binary upload fanout; processing inline")
+        process_binary_upload(upload_type, upload_id, upload)
+
+
+def process_binary_upload(upload_type, upload_id, upload):
+    try:
+        for packet in upload.packets:
+            decoded = parse_packet(packet)
+            packet_id = current_app.store.insert(
+                "packets",
+                {
+                    "upload_id": upload_id,
+                    "device_id": upload.device_id,
+                    "protocol_code": packet.protocol_code,
+                    "protocol_name": decoded["protocol_name"],
+                    "packet_length": packet.length,
+                    "crc": packet.crc,
+                    "payload_hex": packet.payload.hex(),
+                    "payload_json": decoded["decoded"],
+                },
+            )
+            for metric in decoded["measurements"]:
+                row = dict(metric)
+                row["device_id"] = upload.device_id
+                row["source_packet_id"] = packet_id
+                current_app.store.insert("health_measurements", row)
+            for point in decoded["locations"]:
+                row = dict(point)
+                row["device_id"] = upload.device_id
+                row["source_packet_id"] = packet_id
+                current_app.store.insert("location_points", row)
+            for alarm in decoded["alarms"]:
+                row = dict(alarm)
+                row["device_id"] = upload.device_id
+                row["source_packet_id"] = packet_id
+                current_app.store.insert("alarms", row)
+    except Exception:
+        current_app.logger.exception("iwown %s upload fanout failed device=%s upload_id=%s", upload_type, upload.device_id, upload_id)
 
 
 def parse_packet(packet):
